@@ -1,1 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Charleston Cash Buyers • CCB v11</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="Chat with Charleston Cash Buyers to get a fair, fast cash offer. No fees. No repairs." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --brand:#0ea5e9; }
+    html,body { height:100%; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .chat-scroll { scroll-behavior:smooth; }
+    /* Mobile comfort */
+    @media (max-width: 640px){ html { font-size: 18px; } }
+    input, select, textarea { font-size: 16px; }   /* prevent mobile zoom */
+    button, .chip { min-height: 44px; }            /* bigger tap targets */
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50">
+  <!-- Header -->
+  <header class="bg-white/80 backdrop-blur sticky top-0 z-30 border-b">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+      <div class="shrink-0 w-10 h-10 rounded-2xl bg-sky-100 grid place-content-center text-sky-600 font-bold">CCB</div>
+      <div class="min-w-0">
+        <h1 class="text-slate-900 font-semibold leading-tight truncate">Charleston Cash Buyers (v11)</h1>
+        <p class="text-xs text-slate-500 -mt-0.5 truncate">We buy houses as-is • Cash offers • You choose close date</p>
+      </div>
+      <a href="tel:+18438603832" class="ml-auto text-xs sm:text-sm text-sky-700 underline whitespace-nowrap">(843) 860-3832</a>
+    </div>
+  </header>
+
+  <!-- Chat Container -->
+  <main class="max-w-2xl mx-auto p-4">
+    <div id="card" class="bg-white rounded-2xl shadow-lg border overflow-hidden">
+      <div class="bg-gradient-to-r from-sky-500 to-cyan-400 text-white p-4">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/20 grid place-content-center">💬</div>
+          <div class="min-w-0">
+            <h2 class="font-semibold">Get My Fair, No-Obligation Offer</h2>
+            <p class="text-white/80 text-sm">Takes ~60 seconds. No agents. No repairs needed.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Window -->
+      <div id="chat" class="chat-scroll h-[70vh] sm:h-[60vh] overflow-y-auto p-4 space-y-4 bg-slate-50"></div>
+
+      <!-- Sticky Input Area -->
+      <div class="border-t bg-white p-3 safe-bottom sticky bottom-0">
+        <form id="inputForm" class="flex gap-2">
+          <input id="textInput" type="text" autocomplete="off" placeholder="Type here…" class="flex-1 rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          <button class="rounded-xl px-5 py-3 bg-sky-600 text-white font-medium hover:bg-sky-700 disabled:opacity-50">Send</button>
+        </form>
+        <p class="text-[11px] text-slate-500 mt-2">By continuing, you agree to be contacted about your request by call, text, or email. Message & data rates may apply. You can opt out at any time.</p>
+      </div>
+    </div>
+
+    <!-- Footer CTA -->
+    <div class="text-center text-sm text-slate-500 mt-4">
+      Prefer to talk? Call <a href="tel:+18438603832" class="text-sky-700 underline">(843) 860-3832</a>
+    </div>
+  </main>
+
+  <script>
+    // Working Apps Script backend (writes to your Google Sheet)
+    const GOOGLE_SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxEdhO3UaBT3DwQw_UulYw-FDpF75Zykuf-zvgLcruH8pLEhlzDIAn_2gVTj3rAk-lz/exec";
+    const BUSINESS_NAME = "Charleston Cash Buyers";
+    const BUSINESS_PHONE = "(843) 860-3832";
+    const BUSINESS_PHONE_TEL = "+18438603832";
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const chat = document.getElementById('chat');
+      const form = document.getElementById('inputForm');
+      const input = document.getElementById('textInput');
+      const state = { step:0, transcript:[], lead:{} };
+
+      function bubble(role, html){
+        const wrap = document.createElement('div');
+        wrap.className = `flex ${role==='bot' ? '' : 'justify-end'}`;
+        const b = document.createElement('div');
+        b.className = `${role==='bot' ? 'bg-white border' : 'bg-sky-600 text-white'} max-w-[85%] rounded-2xl px-4 py-3 shadow`;
+        b.innerHTML = html;
+        wrap.appendChild(b);
+        chat.appendChild(wrap);
+        chat.scrollTop = chat.scrollHeight;
+      }
+      function chipOptions(options){
+        const row=document.createElement('div'); row.className='flex flex-wrap gap-2';
+        options.forEach(o=>{
+          const btn=document.createElement('button');
+          btn.type='button'; btn.textContent=o;
+          btn.className='chip px-4 py-2 rounded-full border bg-white hover:bg-slate-50 text-base';
+          btn.setAttribute('aria-label', o);
+          btn.onclick=()=>handleInput(o);
+          row.appendChild(btn);
+        });
+        chat.appendChild(row);
+        chat.scrollTop=chat.scrollHeight;
+      }
+      function ask(q, opts){ bubble('bot', q); if(opts){ chipOptions(opts); } }
+      function saveTranscript(role, text){ state.transcript.push({role,text,ts:new Date().toISOString()}); }
+
+      function setInputMode(mode, placeholder, ac){
+        if(mode){ input.setAttribute('inputmode', mode); } else { input.removeAttribute('inputmode'); }
+        if(placeholder){ input.placeholder = placeholder; }
+        if(ac){ input.setAttribute('autocomplete', ac); } else { input.removeAttribute('autocomplete'); }
+      }
+
+      function handleInput(text){
+        const value=(text||input.value).trim();
+        if(!value) return;
+        bubble('user', value);
+        saveTranscript('user', value);
+        input.value='';
+        next(value);
+      }
+      form.onsubmit=(e)=>{e.preventDefault();handleInput();};
+
+      const steps=[
+        ()=>{ setInputMode('text','Tap a button to start…'); ask(`<b>Hi! I'm the ${BUSINESS_NAME} assistant.</b> <span class="text-xs align-super">📱 v11</span><br/>Let’s get you a fair cash offer. Ready to begin?`,["Yes","Not now"]); },
+        (val)=>{ if(/not/i.test(val)) return ask("No worries. Type Start when ready."); setInputMode('text','e.g., Charleston, SC','address-level2'); ask("Which <b>city & state</b> is the property in?"); },
+        (val)=>{ state.lead.cityState=val; setInputMode('', 'Choose a timeframe'); ask("How soon would you like to <b>close</b>?",["ASAP (0-30 days)","30-60 days","2-4 months","Flexible"]); },
+        (val)=>{ state.lead.timeline=val; setInputMode('', 'Choose condition'); ask("What's the <b>property condition</b>?",["Move-in ready","Light repairs","Needs work","Heavy repairs"]); },
+        (val)=>{ state.lead.condition=val; setInputMode('text','Type price or tap Skip'); ask("Do you have a <b>price in mind</b>? Or tap Skip.",["Skip"]); },
+        (val)=>{ if(!/skip/i.test(val)) state.lead.asking=val; setInputMode('text','Street address','street-address'); ask("What's the <b>property address</b>?"); },
+        (val)=>{ state.lead.address=val; setInputMode('text','Your full name','name'); ask("Your <b>name</b>?"); },
+        (val)=>{ state.lead.name=val; setInputMode('tel','10-digit phone','tel'); ask("Best <b>phone number</b> to reach you?"); },
+        (val)=>{ state.lead.phone=val; setInputMode('email','you@example.com','email'); ask("Optional: your <b>email</b> for a written offer.",["Skip"]); },
+        (val)=>{ if(!/skip/i.test(val)) state.lead.email=val; submitLead(); }
+      ];
+
+      async function next(val){ state.step=Math.min(state.step+1,steps.length-1); steps[state.step](val); }
+
+      async function submitLead(){
+        // Include ?src= from the QR link (for simple attribution)
+        const src = new URLSearchParams(window.location.search).get('src') || '';
+        const payload = {...state.lead, src, transcript:state.transcript, ts:new Date().toISOString()};
+        try{
+          if(GOOGLE_SHEETS_WEBAPP_URL){
+            await fetch(GOOGLE_SHEETS_WEBAPP_URL,{
+              method:'POST',
+              headers:{'Content-Type':'text/plain'}, // simple request (mobile-friendly, works cross-origin)
+              body:JSON.stringify(payload),
+              mode:'no-cors',
+              keepalive:true
+            });
+          }
+          bubble('bot',`🙏 Thank you for reaching out. Todd or another member of his team will contact you shortly to talk through your situation and outline the next steps toward an offer.`);
+        }catch(err){
+          console.warn('Submit error', err);
+          bubble('bot',`🙏 Thank you for reaching out. Todd or another member of his team will contact you shortly to talk through your situation and outline the next steps toward an offer.`);
+        }
+      }
+
+      // Start
+      steps[0]();
+    });
+  </script>
+</body>
+</html>
+
 
